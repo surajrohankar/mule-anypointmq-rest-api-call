@@ -1,0 +1,5 @@
+anypointMq:
+  queue: "ps-restMq"
+  clientId: ""
+  clientSecret: ""
+  grant_type: "client_credentials"

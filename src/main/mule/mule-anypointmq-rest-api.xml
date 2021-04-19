@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/anypoint-mq http://www.mulesoft.org/schema/mule/anypoint-mq/current/mule-anypoint-mq.xsd">
+	<flow name="anypointmq-authorize-flow"
+		doc:id="5d574a67-2b41-456f-81bc-5a63969e3600">
+		<scheduler doc:name="Scheduler" doc:id="f979c529-faa1-4390-9ad0-2d5269c481f0" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="55" timeUnit="MINUTES"/>
+			</scheduling-strategy>
+		</scheduler>
+		<http:request method="POST" doc:name="POST Authorize"
+			doc:id="058607ee-6169-464a-ad63-6ee8c5c28767"
+			url="https://mq-us-east-1.anypoint.mulesoft.com/api/v1/authorize">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Accept" : "application/json",
+	"Content-Type" : "application/x-www-form-urlencoded"
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('anypointMq.clientSecret'),
+	"grant_type" : p('anypointMq.grant_type'),
+	"client_id" : p('anypointMq.clientId')
+}]]]></http:query-params>
+		</http:request>
+		<os:store doc:id="55e5fdec-97bc-4a4e-8ea1-63f2c5672a30"
+			key="access" doc:name="Store Payload" />
+		<logger level="INFO" doc:name="LOG Message"
+			doc:id="8a50861f-2dc9-4c68-bedd-9c020c9cbe90"
+			message="=========end==========" />
+	</flow>
+	<flow name="publish-to-anypointmq-flow"
+		doc:id="6b8e67fc-7a62-435a-a27a-455be2d1159c">
+		<http:listener doc:name="PUT 8081/publish"
+			doc:id="767d2d3d-e99a-4ea7-8fff-bc13f80f86a3"
+			path="/publish" config-ref="HTTP_Listener_config1"/>
+		<logger level="INFO" doc:name="LOG Payload"
+			doc:id="27b70be2-66ee-4de1-9445-8a2756105c4b" message="#[payload]" />
+		<set-variable value='#["12345" ++ randomInt(10000)]'
+			doc:name="Set to messageId"
+			doc:id="87792c1c-7335-47c5-8571-f47e02727b3e"
+			variableName="messageId" />
+		<os:retrieve doc:name="Retrieve Authorization"
+			doc:id="921e5ee9-5678-4c57-933e-d29554817533" key="access"
+			target="authorize" />
+		<ee:transform doc:name="DW JSON Payload"
+			doc:id="66a38611-e793-47aa-b277-f90cfd1be39c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"body": payload
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="PUT Message"
+			doc:id="1a756373-75a8-452e-a430-5df5d3587a04"
+			url="https://mq-us-east-1.anypoint.mulesoft.com/api/v1/organizations/{orgId}/environments/{envId}/destinations/{mqname}/messages/{msgId}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "bearer " ++ vars.authorize.access_token,
+	"Accept" : "application/json"
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"msgId" : vars.messageId,
+	"orgId" : vars.authorize.simple_client.orgId,
+	"envId" : vars.authorize.simple_client.envId,
+	"mqname" : p('anypointMq.queue')
+}]]]></http:uri-params>
+		</http:request>
+		<logger level="INFO" doc:name="LOG Message"
+			doc:id="7b9526c8-29ed-4d67-ae86-299de5538568"
+			message="#[&quot;Message is published to &quot; ++ p('anypointMq.queue')]" />
+	</flow>
+	<flow name="consume-from-anypointmq-flow"
+		doc:id="1d2a0e6b-508b-41d2-9495-953858d2ce0f">
+		<http:listener doc:name="GET 8081/consume"
+			doc:id="4f9807ef-9483-4e07-b8d5-fa753e18f81d"
+			path="/consume"
+			allowedMethods="GET" config-ref="HTTP_Listener_config1"/>
+		<os:retrieve doc:name="Retrieve Authorization"
+			doc:id="2ab029ee-e502-49e9-97b8-74e0ed0edbf2" key="access"
+			target="authorize"/>
+		<http:request method="GET" doc:name="GET Message"
+			doc:id="46f22534-8e85-4d08-919d-46eeb065b964"
+			url="https://mq-us-east-1.anypoint.mulesoft.com/api/v1/organizations/{orgId}/environments/{envId}/destinations/{mqname}/messages">
+			<reconnect frequency="200000" />
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "bearer " ++ vars.authorize.access_token,
+	"Accept" : "application/json"
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orgId" : vars.authorize.simple_client.orgId,
+	"envId" : vars.authorize.simple_client.envId,
+	"mqname" : p('anypointMq.queue')
+}]]]></http:uri-params>
+		</http:request>
+		<ee:transform doc:name="DW JSON Payload"
+			doc:id="c213b3d1-60a5-4431-b455-135b4afb3294">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.body[0]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="msgId"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message"
+			doc:id="fb1dad04-f685-46a3-9ac5-3d7530e6f03d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+read(payload,"application/json")]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
+		<choice doc:name="Choice"
+			doc:id="155f7139-dfa6-4597-b88b-07a2f3b6aabb">
+			<when expression="#[payload.name == 'suraj']">
+				<http:request method="DELETE" doc:name="ACK"
+					doc:id="7fadfa50-7c7c-4dcb-bbfa-d49ce52df051"
+					url="https://mq-us-east-1.anypoint.mulesoft.com/api/v1/organizations/{orgId}/environments/{envId}/destinations/{mqname}/messages/{messageId}">
+					<http:body ><![CDATA[#[output application/json
+---
+{
+  "lockId": vars.msgId.headers.lockId[0]
+}]]]></http:body>
+					<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "bearer " ++ vars.authorize.access_token,
+	"Accept" : "application/json"
+}]]]></http:headers>
+					<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orgId" : vars.authorize.simple_client.orgId,
+	"messageId" : vars.msgId.headers.messageId[0],
+	"envId" : vars.authorize.simple_client.envId,
+	"mqname" : p('anypointMq.queue')
+}]]]></http:uri-params>
+				</http:request>
+				<ee:transform doc:name="Transform Message"
+					doc:id="829c2734-d35a-402d-8487-254eff4ee1d9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"message is successfully consumed by consumer."]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<http:request method="DELETE" doc:name="Negative ACK" doc:id="3f16a4cb-d82b-4c59-8c95-10fd61b48eab" url="https://mq-us-east-1.anypoint.mulesoft.com/api/v1/organizations/{orgId}/environments/{envId}/destinations/{destId}/messages/locks">
+					<http:body ><![CDATA[#[[
+  {
+    "messageId": vars.msgId.headers.messageId[0],
+    "lockId": vars.msgId.headers.lockId[0]
+  }
+]]]]></http:body>
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "bearer " ++ vars.authorize.access_token,
+	"Accept" : "application/json"
+}]]]></http:headers>
+					<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"orgId" : vars.authorize.simple_client.orgId,
+	"destId" : p('anypointMq.queue'),
+	"envId" : vars.authorize.simple_client.envId
+}]]]></http:uri-params>
+				</http:request>
+				<ee:transform doc:name="Transform Message"
+					doc:id="057ea793-ff3c-4c9d-8fb8-1a6b75b077f0">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"message is sent back to queue"]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>

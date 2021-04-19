@@ -1,0 +1,54 @@
+{
+	"info": {
+		"_postman_id": "b891ae9c-a09d-481b-9cc5-4bd2981cf198",
+		"name": "AnypointMQ REST API Consume",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Publish to AnypointMQ",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"name\": \"Suraj\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "text"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8081/publish",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"publish"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "AnypointMQ Message Consume",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8081/consume",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"consume"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
